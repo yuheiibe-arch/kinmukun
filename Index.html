@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: sans-serif; padding: 20px; color: #333; }
+      h3 { margin-top: 0; font-size: 16px; }
+      .form-group { margin-bottom: 15px; }
+      label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 13px; }
+      select, input[type="date"] { width: 100%; padding: 8px; box-sizing: border-box; border-radius: 4px; border: 1px solid #ccc; font-size: 14px;}
+      
+      .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+      button { color: white; padding: 12px 15px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 14px; font-weight: bold; }
+      #run-btn { background-color: #4CAF50; }
+      #cancel-btn { background-color: #f44336; display: none; }
+      button:disabled { background-color: #cccccc; cursor: not-allowed; }
+      
+      #status { margin-top: 15px; font-weight: bold; text-align: center; font-size: 13px;}
+      .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 16px; height: 16px; animation: spin 2s linear infinite; display: inline-block; vertical-align: middle; margin-right: 10px; display: none; }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <h3>勤務くん 集計パネル</h3>
+    
+    <div class="form-group">
+      <label for="kyoten">拠点名 (診療科)</label>
+      <!-- ▼ ここが重要：選択時に onKyotenChange() が走るようになります -->
+      <select id="kyoten" onchange="onKyotenChange()">
+        <option value="">読込中...</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="start-date">開始日</label>
+      <input type="date" id="start-date">
+    </div>
+
+    <div class="form-group">
+      <label for="end-date">終了日（拠点選択で自動算出）</label>
+      <input type="date" id="end-date">
+    </div>
+
+    <div class="btn-group">
+      <button id="run-btn" onclick="run()" disabled>指定期間で集計・出力</button>
+      <button id="cancel-btn" onclick="cancel()">中止</button>
+    </div>
+
+    <div id="status"><span class="loader" id="loader"></span><span id="msg"></span></div>
+
+    <script>
+      // UI読み込み時の初期設定
+      google.script.run.withSuccessHandler(function(list) {
+        const select = document.getElementById('kyoten');
+        select.innerHTML = '<option value="">拠点を選択してください</option>';
+        list.forEach(item => {
+          const opt = document.createElement('option');
+          opt.value = item.id;
+          opt.textContent = item.label;
+          select.appendChild(opt);
+        });
+        document.getElementById('run-btn').disabled = false;
+        
+        // 開始日は「過去1年前の1日」をセット
+        const today = new Date();
+        const startYear = today.getFullYear() - 1;
+        const startMonth = ("0" + (today.getMonth() + 1)).slice(-2);
+        document.getElementById('start-date').value = `${startYear}-${startMonth}-01`;
+        
+        // ※終了日は空欄にしておき、拠点選択時に自動取得させます
+        document.getElementById('end-date').value = "";
+        
+      }).getKyotenList();
+
+      // 拠点が変更された時に走る処理
+      function onKyotenChange() {
+        const kyoten = document.getElementById('kyoten').value;
+        if (!kyoten) {
+          document.getElementById('end-date').value = "";
+          return;
+        }
+        
+        document.getElementById('msg').innerText = "対象拠点の最終勤務日を取得中...";
+        document.getElementById('msg').style.color = "#888";
+        document.getElementById('run-btn').disabled = true;
+
+        // Code.gsの getMaxDateForKyoten を呼び出して終了日を取得
+        google.script.run
+          .withSuccessHandler(function(maxDateStr) {
+            document.getElementById('msg').innerText = "";
+            document.getElementById('run-btn').disabled = false;
+            
+            if (maxDateStr) {
+              document.getElementById('end-date').value = maxDateStr;
+            } else {
+              // 万が一未来のシフトがない場合は、とりあえず今日の日付をセット
+              const d = new Date();
+              document.getElementById('end-date').value = `${d.getFullYear()}-${("0"+(d.getMonth()+1)).slice(-2)}-${("0"+d.getDate()).slice(-2)}`;
+            }
+          })
+          .withFailureHandler(function(err) {
+            if(err.message.includes("中止")) {
+              document.getElementById('msg').innerText = "中止されました。";
+            } else {
+              document.getElementById('msg').innerText = "最終日取得エラー";
+            }
+            document.getElementById('msg').style.color = "#d32f2f";
+            document.getElementById('run-btn').disabled = false;
+            document.getElementById('cancel-btn').style.display = "none";
+          })
+          .getMaxDateForKyoten(kyoten);
+      }
+
+      function run() {
+        const kyoten = document.getElementById('kyoten').value;
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        
+        if (!kyoten || !startDate || !endDate) {
+          alert('拠点名・開始日・終了日をすべて入力してください。');
+          return;
+        }
+
+        document.getElementById('msg').innerText = "集計中...（データ量により数分かかります）";
+        document.getElementById('msg').style.color = "#d32f2f";
+        document.getElementById('loader').style.display = "inline-block";
+        document.getElementById('run-btn').disabled = true;
+        document.getElementById('cancel-btn').style.display = "block"; // 中止ボタン表示
+
+        google.script.run
+          .withSuccessHandler(function(resMsg) {
+            document.getElementById('msg').innerText = resMsg;
+            document.getElementById('msg').style.color = "green";
+            document.getElementById('loader').style.display = "none";
+            document.getElementById('run-btn').disabled = false;
+            document.getElementById('cancel-btn').style.display = "none";
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('msg').innerText = err.message;
+            document.getElementById('msg').style.color = "#d32f2f";
+            document.getElementById('loader').style.display = "none";
+            document.getElementById('run-btn').disabled = false;
+            document.getElementById('cancel-btn').style.display = "none";
+          })
+          .runAggregation(kyoten, startDate, endDate); 
+      }
+
+      function cancel() {
+        document.getElementById('msg').innerText = "中止しています...";
+        document.getElementById('msg').style.color = "#f44336";
+        document.getElementById('cancel-btn').disabled = true;
+        
+        google.script.run.cancelProcess();
+      }
+    </script>
+  </body>
+</html>

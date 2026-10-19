@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: sans-serif; padding: 15px; color: #333; background: #f9f9f9; }
+      h2 { margin-top: 0; font-size: 18px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
+      .container { display: flex; gap: 20px; height: 90vh; }
+      
+      .sidebar { width: 280px; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-y: auto; }
+      .main-content { flex: 1; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+      
+      .form-group { margin-bottom: 15px; }
+      label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 13px; }
+      input[type="text"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+      
+      .tree-area { margin-bottom: 10px; font-size: 13px; }
+      .tree-group { margin-left: 15px; margin-bottom: 5px; }
+      .tree-kyoten { margin-left: 20px; color: #555; }
+      
+      button { background-color: #4CAF50; color: white; padding: 10px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 5px; }
+      button:disabled { background-color: #ccc; cursor: not-allowed; }
+      
+      #status { margin-top: 10px; font-weight: bold; font-size: 13px; text-align: center; }
+      
+      /* テーブル設定 */
+      .table-wrapper { flex: 1; overflow-y: auto; margin-top: 10px; border: 1px solid #999; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+      th, td { border: 1px solid #999; padding: 8px; text-align: center; }
+      th { position: sticky; top: 0; z-index: 1; font-weight: bold; }
+      
+      /* 画像に合わせたカラーリング */
+      .th-base { background-color: #f1f1f1; }
+      .th-am { background-color: #c9daf8; } /* 薄い青 9-13 */
+      .th-pm1 { background-color: #d9ead3; } /* 薄い緑 15-18 */
+      .th-pm2 { background-color: #e4d7f5; } /* 薄い紫 18-21 */
+      .th-weekday { background-color: #fce5cd; } /* 薄いオレンジ 月〜金 */
+      .th-weekend { background-color: #00ffff; } /* シアン 土日 */
+      
+      .text-left { text-align: left; }
+      
+      /* チェックボックス用少し調整 */
+      .toggle-label { font-weight: normal; cursor: pointer; background: #eee; padding: 8px; border-radius: 4px; display: block; border: 1px solid #ddd; }
+      .toggle-label:hover { background: #e0e0e0; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      
+      <!-- サイドバー -->
+      <div class="sidebar">
+        <h2>検索条件</h2>
+        <div class="form-group">
+          <label>医師名 (部分一致)</label>
+          <input type="text" id="doctor-name" list="doctor-list" placeholder="例: 大 または 鈴木" autocomplete="off">
+          <datalist id="doctor-list"></datalist>
+        </div>
+        
+        <div class="form-group">
+          <label>対象拠点 <small>(親をチェックで一括選択)</small></label>
+          <div id="kyoten-tree" style="max-height: 250px; overflow-y: auto; border: 1px solid #ccc; padding: 5px;">読込中...</div>
+        </div>
+        
+        <!-- ▼ 定期非常勤を含めるかのトグルスイッチ -->
+        <div class="form-group">
+          <label class="toggle-label">
+            <input type="checkbox" id="include-teiki"> 定期非常勤も含めて検索する
+          </label>
+        </div>
+        
+        <button id="search-btn" onclick="executeSearch()" disabled>検索する</button>
+        <div id="status"></div>
+      </div>
+      
+      <!-- メイン -->
+      <div class="main-content">
+        <h2>検索結果</h2>
+        <div class="table-wrapper">
+          <table id="result-table">
+            <thead>
+              <tr>
+                <th rowspan="2" class="th-base" style="top: 0;">医師名</th>
+                <th rowspan="2" class="th-base" style="top: 0;">勤務先</th>
+                <th rowspan="2" class="th-base" style="top: 0;">総回数</th>
+                <th rowspan="2" class="th-base" style="top: 0;">祝日</th>
+                <th colspan="3" class="th-base" style="top: 0;">時間帯分布</th>
+                <th colspan="7" class="th-base" style="top: 0;">曜日分布</th>
+              </tr>
+              <tr>
+                <!-- 時間帯カラー -->
+                <th class="th-am" style="top: 35px;">9-13</th>
+                <th class="th-pm1" style="top: 35px;">15-18</th>
+                <th class="th-pm2" style="top: 35px;">18-21</th>
+                <!-- 曜日カラー -->
+                <th class="th-weekday" style="top: 35px;">月</th>
+                <th class="th-weekday" style="top: 35px;">火</th>
+                <th class="th-weekday" style="top: 35px;">水</th>
+                <th class="th-weekday" style="top: 35px;">木</th>
+                <th class="th-weekday" style="top: 35px;">金</th>
+                <th class="th-weekend" style="top: 35px;">土</th>
+                <th class="th-weekend" style="top: 35px;">日</th>
+              </tr>
+            </thead>
+            <tbody id="result-body">
+              <tr><td colspan="14">検索条件を指定して検索してください。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+    </div>
+
+    <script>
+      google.script.run.withSuccessHandler(buildTree).getKyotenTree();
+      google.script.run.withSuccessHandler(populateDoctorList).getUniqueDoctorNames();
+
+      function populateDoctorList(names) {
+        const datalist = document.getElementById('doctor-list');
+        names.forEach(name => {
+          const option = document.createElement('option');
+          option.value = name;
+          datalist.appendChild(option);
+        });
+      }
+
+      function buildTree(treeData) {
+        const container = document.getElementById('kyoten-tree');
+        container.innerHTML = '';
+        
+        for (const area in treeData) {
+          const areaDiv = document.createElement('div');
+          areaDiv.className = 'tree-area';
+          areaDiv.innerHTML = `<label><input type="checkbox" class="cb-area" value="${area}"> <b>${area}</b></label>`;
+          
+          for (const group in treeData[area]) {
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'tree-group';
+            groupDiv.innerHTML = `<label><input type="checkbox" class="cb-group" data-area="${area}" value="${group}"> ${group}</label>`;
+            
+            const kyotenDiv = document.createElement('div');
+            kyotenDiv.className = 'tree-kyoten';
+            
+            treeData[area][group].forEach(kyoten => {
+              kyotenDiv.innerHTML += `<label style="display:block;"><input type="checkbox" class="cb-kyoten" data-group="${group}" value="${kyoten}"> ${kyoten}</label>`;
+            });
+            
+            groupDiv.appendChild(kyotenDiv);
+            areaDiv.appendChild(groupDiv);
+          }
+          container.appendChild(areaDiv);
+        }
+        
+        document.getElementById('search-btn').disabled = false;
+        setupCheckboxLinkage();
+      }
+
+      function setupCheckboxLinkage() {
+        document.querySelectorAll('.cb-area').forEach(cb => {
+          cb.addEventListener('change', function() {
+            const children = this.closest('.tree-area').querySelectorAll('input[type="checkbox"]');
+            children.forEach(child => child.checked = this.checked);
+          });
+        });
+        document.querySelectorAll('.cb-group').forEach(cb => {
+          cb.addEventListener('change', function() {
+            const children = this.parentElement.nextElementSibling.querySelectorAll('input[type="checkbox"]');
+            children.forEach(child => child.checked = this.checked);
+          });
+        });
+      }
+
+      function executeSearch() {
+        const doctorName = document.getElementById('doctor-name').value.trim();
+        if (!doctorName) {
+          alert('医師名を入力してください。');
+          return;
+        }
+
+        const selectedKyotens = Array.from(document.querySelectorAll('.cb-kyoten:checked')).map(cb => cb.value);
+        if (selectedKyotens.length === 0) {
+          alert('拠点を1つ以上選択してください。');
+          return;
+        }
+
+        // ▼ トグルスイッチの状態を取得
+        const includeTeiki = document.getElementById('include-teiki').checked;
+
+        const btn = document.getElementById('search-btn');
+        const status = document.getElementById('status');
+        const tbody = document.getElementById('result-body');
+        
+        btn.disabled = true;
+        status.innerText = "検索中...";
+        status.style.color = "#333";
+        tbody.innerHTML = '<tr><td colspan="14">データ抽出中... 少々お待ちください。</td></tr>';
+
+        // パラメータに includeTeiki を追加
+        const params = { 
+          doctorName: doctorName, 
+          selectedKyotens: selectedKyotens,
+          includeTeiki: includeTeiki
+        };
+
+        google.script.run
+          .withSuccessHandler(function(results) {
+            btn.disabled = false;
+            status.innerText = `${results.length} 件見つかりました`;
+            status.style.color = "green";
+            renderTable(results);
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled = false;
+            status.innerText = "エラーが発生しました";
+            status.style.color = "red";
+            tbody.innerHTML = `<tr><td colspan="14" style="color:red;">${err.message}</td></tr>`;
+          })
+          .searchDoctorData(params);
+      }
+
+      function renderTable(data) {
+        const tbody = document.getElementById('result-body');
+        tbody.innerHTML = '';
+        
+        if (data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="14">条件に一致する医師・シフトはありません。</td></tr>';
+          return;
+        }
+
+        data.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="text-left">${row.name}</td>
+            <td class="text-left">${row.kyoten}</td>
+            <td><b>${row.totalCount}</b></td>
+            <td>${row.holidayCount}</td>
+            <td>${row.frames.am || '-'}</td>
+            <td>${row.frames.pm1 || '-'}</td>
+            <td>${row.frames.pm2 || '-'}</td>
+            <td>${row.days[1] || '-'}</td>
+            <td>${row.days[2] || '-'}</td>
+            <td>${row.days[3] || '-'}</td>
+            <td>${row.days[4] || '-'}</td>
+            <td>${row.days[5] || '-'}</td>
+            <td>${row.days[6] || '-'}</td>
+            <td>${row.days[0] || '-'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+    </script>
+  </body>
+</html>
